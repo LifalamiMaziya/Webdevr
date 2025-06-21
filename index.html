@@ -13,7 +13,7 @@
             -moz-osx-font-smoothing: grayscale;
             display: flex;
             flex-direction: column;
-            min-height: 100vh; /* Ensures full viewport height */ 
+            min-height: 100vh; /* Ensures full viewport height */
             margin: 0;
             background-color: #f0f2f5; /* Soft background */
         }
@@ -237,7 +237,7 @@
 </head>
 <body>
     <!-- Main content area that switches between chat and preview -->
-    <div id="main-content-area" class="flex-grow">
+    <div id="main-content-area">
         <!-- Chat Interface - Initially visible -->
         <div id="chat-interface">
             <div class="chat-messages">
@@ -276,10 +276,12 @@
         let generatedMockupsData = []; // To store base64 data of the 4 mockups
         let selectedMockupData = '';   // To store the chosen mockup's data
         let websitePlan = '';          // To store the output from the planning agent
+        let generatedContent = {};     // To store content from ContentGenerationModule
+        let generatedAssets = {};      // To store assets from AssetGenerationModule (map of names to URLs)
         let currentView = 'chat';      // 'chat' or 'preview' - tracks which interface is currently visible
         let previewAvailable = false;  // True when mockups or code have been generated
 
-        // --- Helper Functions ---
+        // --- Core UI Management ---
         /**
          * Switches the active view between chat and preview.
          */
@@ -288,17 +290,17 @@
                 if (previewAvailable) {
                     chatInterface.classList.add('hidden');
                     previewInterface.classList.remove('hidden');
-                    previewInterface.style.opacity = 1; // Ensure it's fully visible
-                    previewInterface.style.pointerEvents = 'auto'; // Re-enable interaction
+                    previewInterface.style.opacity = 1;
+                    previewInterface.style.pointerEvents = 'auto';
                     toggleViewButton.textContent = 'Show Chat';
                     currentView = 'preview';
                 }
             } else { // currentView === 'preview'
                 previewInterface.classList.add('hidden');
-                previewInterface.style.opacity = 0; // Fade out
-                previewInterface.style.pointerEvents = 'none'; // Disable interaction
+                previewInterface.style.opacity = 0;
+                previewInterface.style.pointerEvents = 'none';
                 chatInterface.classList.remove('hidden');
-                chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom when returning to chat
+                chatMessages.scrollTop = chatMessages.scrollHeight;
                 toggleViewButton.textContent = 'Show Preview';
                 currentView = 'chat';
             }
@@ -312,7 +314,7 @@
          */
         function addMessage(content, isUser = false, className = '') {
             const messageDiv = document.createElement('p');
-            messageDiv.classList.add('chat-message'); // Base class for all messages
+            messageDiv.classList.add('chat-message');
 
             if (isUser) {
                 messageDiv.classList.add('user');
@@ -320,22 +322,21 @@
                 messageDiv.classList.add('ai');
             }
 
-            // Conditionally add className only if it's not empty, and split it by spaces
             if (className) {
                 className.split(' ').forEach(cls => {
-                    if (cls) { // Ensure no empty strings from multiple spaces
+                    if (cls) {
                         messageDiv.classList.add(cls);
                     }
                 });
             }
 
             if (typeof content === 'string') {
-                messageDiv.innerHTML = content; // Use innerHTML to allow for bold tags etc.
+                messageDiv.innerHTML = content;
             } else {
-                messageDiv.appendChild(content); // Append actual DOM element
+                messageDiv.appendChild(content);
             }
             chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to the bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
         /**
@@ -344,7 +345,7 @@
         function addTypingIndicator() {
             const typingIndicator = document.createElement('p');
             typingIndicator.id = 'typing-indicator';
-            typingIndicator.classList.add('chat-message', 'ai'); // Apply base message styles
+            typingIndicator.classList.add('chat-message', 'ai');
             typingIndicator.textContent = 'M.A.I.A is typing...';
             chatMessages.appendChild(typingIndicator);
             chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -378,21 +379,22 @@
             userInput.disabled = false;
             submitButton.disabled = false;
             userInput.placeholder = "Start a conversation...";
-            submitButton.textContent = "Proceed"; // Reset button text
+            submitButton.textContent = "Proceed";
             messageInputGroup.classList.remove('disabled-state');
             userInput.focus();
         }
 
+        // --- AI Module: ImagePromptingAgent ---
         /**
          * Generates a refined prompt for the image generator based on the user's initial query.
-         * Uses the gemini-2.0-flash model for this purpose.
+         * Uses the gemini-2.0-flash model.
          * @param {string} userQuery - The initial query from the user.
          * @returns {Promise<string>} A promise that resolves with the generated image prompt string.
          */
-        async function generateImageGenPrompt(userQuery) {
+        async function ImagePromptingAgent(userQuery) {
             addTypingIndicator();
             disableInput("Refining prompt for image generation...");
-            addMessage("M.A.I.A: Understanding your request to generate a precise image prompt...", false, 'text-gray-600');
+            addMessage("M.A.I.A: Crafting a visual prompt...", false, 'text-gray-600');
 
             const promptRefinementInstruction = `You are an AI assistant specialized in generating concise and effective prompts for an image generation AI (Imagen 3.0). Your goal is to transform a user's general website description into a specific, high-quality prompt that will produce a direct visual *screenshot* or *webpage view* of a website.
 
@@ -407,147 +409,156 @@ Example Output: "A clean screenshot of a minimalist and contemporary website int
 
 Now, generate a prompt based on the following user query: "${userQuery}"`;
 
-            const payload = {
-                contents: [{ role: "user", parts: [{ text: promptRefinementInstruction }] }],
-            };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; 
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const payload = { contents: [{ role: "user", parts: [{ text: promptRefinementInstruction }] }] };
+            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
 
             try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    removeTypingIndicator();
+                    if (response.status === 401) {
+                        addMessage(`M.A.I.A: Authorization error (401) from Image Prompting Agent. Please check your API key or contact support if the issue persists.`, false, 'text-red-500');
+                    } else {
+                        addMessage(`M.A.I.A: API error ${response.status} from Image Prompting Agent: ${errorText.substring(0, 200)}...`, false, 'text-red-500');
+                    }
+                    console.error("API Error Response (Image Prompting Agent):", response.status, errorText);
+                    return null;
+                }
 
-                if (result.candidates && result.candidates.length > 0 &&
-                    result.candidates[0].content && result.candidates[0].content.parts &&
-                    result.candidates[0].content.parts.length > 0 && result.candidates[0].content.parts[0].text) {
-                    
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0 && result.candidates[0].content.parts[0].text) {
                     const imagePrompt = result.candidates[0].content.parts[0].text.trim();
                     removeTypingIndicator();
-                    addMessage(`M.A.I.A: Generated image prompt: "${imagePrompt}"`, false, 'text-gray-600');
+                    addMessage(`M.A.I.A: Image prompt refined.`, false, 'text-gray-600');
                     return imagePrompt;
                 } else {
                     removeTypingIndicator();
-                    addMessage("M.A.I.A: Failed to generate a refined image prompt. Using original query.", false, 'text-orange-500');
+                    addMessage("M.A.I.A: Failed to refine image prompt. Proceeding with original query. Unexpected AI response structure.", false, 'text-orange-500');
                     console.error("Error: Image prompt generation returned unexpected structure:", result);
-                    return userQuery; // Fallback to original query
+                    return userQuery; 
                 }
             } catch (error) {
                 removeTypingIndicator();
-                addMessage("M.A.I.A: Error refining image prompt. Using original query.", false, 'text-orange-500');
-                console.error("Error calling Image Prompt Generation Agent:", error);
-                return userQuery; // Fallback to original query
+                addMessage("M.A.I.A: Network error or malformed response during image prompt generation. Please try again.", false, 'text-red-500');
+                console.error("Error calling Image Prompting Agent:", error);
+                return userQuery; 
             }
         }
 
-
+        // --- AI Module: ImageGenerationModule ---
         /**
-         * Generates image mockups based on the user's query (or refined prompt) using Imagen API.
-         * Displays 4 mockups for the user to select.
-         * @param {string} query - The prompt for image generation, directly from the prompt generation AI.
+         * Generates image mockups using Imagen 3.0. Returns raw base64 data.
+         * @param {string} prompt - The prompt for image generation.
+         * @returns {Promise<Array<string>>} A promise that resolves with an array of base64 image strings.
          */
-        async function generateImageMockups(query) {
+        async function ImageGenerationModule(prompt) {
             addTypingIndicator();
-            disableInput("Generating 4 design mockups...");
-            addMessage("M.A.I.A: Generating four initial design mockups based on your request...", false, 'text-gray-600');
+            disableInput("Generating design concepts...");
+            addMessage("M.A.I.A: Generating initial design concepts...", false, 'text-gray-600');
             
-            const payload = { 
-                instances: { prompt: query }, 
-                parameters: { "sampleCount": 4 } // Request 4 images
-            };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // Canvas environment will inject API key
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+            const payload = { instances: { prompt: prompt }, parameters: { "sampleCount": 4 } };
+            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`; // Using imagen-3.0-generate-002
 
             try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    removeTypingIndicator();
+                    if (response.status === 401) {
+                        addMessage(`M.A.I.A: Authorization error (401) from Image Generation Module. Please check your API key or contact support if the issue persists.`, false, 'text-red-500');
+                    } else {
+                        addMessage(`M.A.I.A: API error ${response.status} from Image Generation Module: ${errorText.substring(0, 200)}...`, false, 'text-red-500');
+                    }
+                    console.error("API Error Response (Image Generation Module):", response.status, errorText);
+                    return [];
+                }
+
                 const result = await response.json();
                 
                 removeTypingIndicator();
-
-                // Check if predictions exist and are not empty
                 if (result.predictions && result.predictions.length > 0) {
-                    generatedMockupsData = result.predictions.map(p => p.bytesBase64Encoded);
-                    
-                    const mockupContainer = document.createElement('div');
-                    mockupContainer.className = 'mockup-container';
-
-                    generatedMockupsData.forEach((base64, index) => {
-                        const itemDiv = document.createElement('div');
-                        itemDiv.className = 'mockup-item';
-                        itemDiv.dataset.mockupIndex = index + 1; // Store index for selection
-                        itemDiv.addEventListener('click', (e) => {
-                            const selectedIndex = parseInt(e.currentTarget.dataset.mockupIndex);
-                            userInput.value = selectedIndex; // Populate input with selection
-                            submitButton.click(); // Programmatically click submit
-                        });
-
-                        const imgElement = document.createElement('img');
-                        imgElement.src = `data:image/png;base64,${base64}`;
-                        imgElement.alt = `Generated Website Mockup ${index + 1}`;
-                        const label = document.createElement('p');
-                        label.textContent = `Mockup ${index + 1}`;
-                        itemDiv.appendChild(imgElement);
-                        itemDiv.appendChild(label);
-                        mockupContainer.appendChild(itemDiv);
-                    });
-
-                    // Clear preview and add mockups to the preview interface
-                    previewInterface.innerHTML = ''; 
-                    previewInterface.appendChild(mockupContainer);
-
-                    addMessage("M.A.I.A: Here are four design concepts. Please tap on your favorite mockup (1-4). If you don't like any, type 'new ones'.", false);
-                    
-                    aiWorkflowPhase = 'awaitingMockupSelection';
-                    enableInput();
-                    userInput.placeholder = "Tap a mockup or type 'new ones'";
-                    submitButton.textContent = "Select";
-                    
-                    previewAvailable = true;
-                    if (currentView === 'chat') { // Only show button if currently in chat view
-                        toggleViewButton.classList.remove('hidden');
-                        toggleViewButton.textContent = 'Show Preview';
-                    } else { // If already in preview (e.g. from previous generation), just update button
-                        toggleViewButton.textContent = 'Show Chat';
-                    }
-                    switchView(); // Automatically switch to preview to show mockups
-
+                    addMessage("M.A.I.A: Design concepts ready!", false, 'text-gray-600');
+                    return result.predictions.map(p => p.bytesBase64Encoded);
                 } else {
-                    // Handle cases where no predictions are returned
-                    addMessage("M.A.I.A: Failed to generate mockups. The AI did not return any design concepts. Please try a different prompt.", false, 'text-red-500');
-                    aiWorkflowPhase = 'initialQuery'; 
-                    enableInput();
-                    // Keep the toggle button hidden if no preview is generated
-                    toggleViewButton.classList.add('hidden');
+                    addMessage("M.A.I.A: No design concepts generated. Please try a different prompt. Unexpected AI response structure.", false, 'text-red-500');
+                    console.error("Error: Image Generation Module returned no predictions:", result);
+                    return [];
                 }
-
             } catch (error) {
                 removeTypingIndicator();
-                addMessage("M.A.I.A: Failed to generate mockups. Please try a different prompt.", false, 'text-red-500');
-                console.error("Error calling Image Generation API:", error);
-                aiWorkflowPhase = 'initialQuery'; 
-                enableInput();
-                // Keep the toggle button hidden on error
-                toggleViewButton.classList.add('hidden');
+                addMessage("M.A.I.A: Network error or malformed response during image generation. Please try again.", false, 'text-red-500');
+                console.error("Error calling Image Generation Module:", error);
+                return [];
             }
         }
 
+        // --- UI Module: UI_DisplayMockupsModule ---
         /**
-         * Generates a detailed website plan using the Gemini-2.0-Flash model.
-         * The plan is based on the user's initial query and the selected image mockup (as inspiration).
+         * Displays the generated image mockups in the preview area.
+         * @param {Array<string>} mockupsData - Array of base64 image strings.
+         */
+        function UI_DisplayMockupsModule(mockupsData) {
+            if (mockupsData.length === 0) {
+                previewInterface.innerHTML = '<p>No mockups to display.</p>';
+                previewAvailable = false;
+                toggleViewButton.classList.add('hidden');
+                return;
+            }
+
+            previewInterface.innerHTML = ''; // Clear previous content
+            const mockupContainer = document.createElement('div');
+            mockupContainer.className = 'mockup-container';
+
+            mockupsData.forEach((base64, index) => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'mockup-item';
+                itemDiv.dataset.mockupIndex = index + 1; // Store index for selection
+                itemDiv.addEventListener('click', (e) => {
+                    const selectedIndex = parseInt(e.currentTarget.dataset.mockupIndex);
+                    userInput.value = selectedIndex; // Populate input with selection
+                    submitButton.click(); // Programmatically click submit
+                });
+
+                const imgElement = document.createElement('img');
+                imgElement.src = `data:image/png;base64,${base64}`;
+                imgElement.alt = `Generated Website Mockup ${index + 1}`;
+                const label = document.createElement('p');
+                label.textContent = `Mockup ${index + 1}`;
+                itemDiv.appendChild(imgElement);
+                itemDiv.appendChild(label);
+                mockupContainer.appendChild(itemDiv);
+            });
+
+            previewInterface.appendChild(mockupContainer);
+            
+            previewAvailable = true;
+            toggleViewButton.classList.remove('hidden');
+            if (currentView === 'chat') {
+                toggleViewButton.textContent = 'Show Preview';
+            } else {
+                toggleViewButton.textContent = 'Show Chat';
+            }
+            switchView(); // Show preview after mockups are loaded
+        }
+
+        // --- AI Module: WebsitePlanningAgent ---
+        /**
+         * Generates a detailed website plan.
+         * Uses the gemini-2.0-flash model.
          * @param {string} userQuery - The initial query from the user.
          * @param {string} imageBase64 - The base64 encoded string of the selected image mockup.
+         * @returns {Promise<string>} A promise that resolves with the detailed website plan.
          */
-        async function generateWebsitePlan(userQuery, imageBase64) {
+        async function WebsitePlanningAgent(userQuery, imageBase64) {
             addTypingIndicator();
             disableInput("Planning Agent at work...");
-            addMessage("M.A.I.A: Great choice! The Planning Agent is now analyzing your request and the selected design to create a structural plan...", false, 'text-gray-600');
+            addMessage("M.A.I.A: Analyzing design and crafting a structural plan...", false, 'text-gray-600');
 
             const planningPrompt = `You are an expert Website Planning Agent. Your task is to analyze the user's initial request and the selected website mockup. Based on these inputs, create a detailed, structured plan for building the website. The mockup is for inspiration to get the "vibe" and "look" the user is seeking, not for exact emulation or recreation. The plan should outline the following in a clear, easy-to-read format: 
 1.  **Overall Goal**: A brief summary of the website's purpose.
@@ -558,167 +569,422 @@ Now, generate a prompt based on the following user query: "${userQuery}"`;
 
 User's initial request: "${userQuery}"`;
             
-            const payload = {
-                contents: [{
-                    parts: [
-                        { text: planningPrompt },
-                        { inline_data: { mime_type: "image/png", data: imageBase64 } }
-                    ]
-                }]
-            };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // Canvas environment will inject API key
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; 
+            const payload = { contents: [{ parts: [{ text: planningPrompt }, { inline_data: { mime_type: "image/png", data: imageBase64 } }] }] };
+            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
 
             try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    removeTypingIndicator();
+                    if (response.status === 401) {
+                        addMessage(`M.A.I.A: Authorization error (401) from Website Planning Agent. Please check your API key or contact support if the issue persists.`, false, 'text-red-500');
+                    } else {
+                        addMessage(`M.A.I.A: API error ${response.status} from Website Planning Agent: ${errorText.substring(0, 200)}...`, false, 'text-red-500');
+                    }
+                    console.error("API Error Response (Website Planning Agent):", response.status, errorText);
+                    return null;
+                }
+
                 const result = await response.json();
                 
-                // Add checks for undefined properties
-                if (result.candidates && result.candidates.length > 0 && 
-                    result.candidates[0].content && result.candidates[0].content.parts &&
-                    result.candidates[0].content.parts.length > 0 && result.candidates[0].content.parts[0].text) {
-                    
-                    websitePlan = result.candidates[0].content.parts[0].text;
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0 && result.candidates[0].content.parts[0].text) {
+                    const plan = result.candidates[0].content.parts[0].text;
                     removeTypingIndicator();
-                    addMessage("<strong>Website Plan:</strong><br><pre class='whitespace-pre-wrap font-sans text-sm'>" + websitePlan + "</pre>", false, 'bg-green-50 border border-green-200');
+                    addMessage("<strong>Website Plan:</strong><br><pre class='whitespace-pre-wrap font-sans text-sm'>" + plan + "</pre>", false, 'bg-green-50 border border-green-200');
                     addMessage("M.A.I.A: The plan is ready. If you're happy with it, type <b>'Proceed'</b> to build the final website.", false);
-                    aiWorkflowPhase = 'awaitingPlanApproval';
-                    enableInput();
-                    userInput.placeholder = "Type 'Proceed' to approve the plan";
-                    submitButton.textContent = "Proceed";
-                    
-                    // After plan, switch back to chat (as user needs to input "Proceed")
-                    currentView = 'preview'; // Temporarily set to preview so switchView correctly goes to chat
-                    switchView();
-                    previewAvailable = true;
-                    toggleViewButton.classList.remove('hidden'); // Ensure button is visible
-                    toggleViewButton.textContent = 'Show Preview'; // Set text for when in chat view
+                    return plan;
                 } else {
                     removeTypingIndicator();
-                    addMessage("M.A.I.A: The Planning Agent failed to generate a valid plan. The response was unexpected. Please try again.", false, 'text-red-500');
-                    console.error("Error: Planning Agent returned unexpected structure:", result);
-                    aiWorkflowPhase = 'awaitingMockupSelection'; 
-                    enableInput();
+                    addMessage("M.A.I.A: Planning failed. Unexpected AI response structure.", false, 'text-red-500');
+                    console.error("Error: Website Planning Agent returned unexpected structure:", result);
+                    return null;
                 }
             } catch (error) {
                 removeTypingIndicator();
-                addMessage("M.A.I.A: The Planning Agent failed. Please try again.", false, 'text-red-500');
-                console.error("Error calling Planning Agent:", error);
-                aiWorkflowPhase = 'awaitingMockupSelection'; // Allow user to try again or select a new mockup
-                enableInput();
+                addMessage("M.A.I.A: Network error or malformed response during planning. Please try again.", false, 'text-red-500');
+                console.error("Error calling Website Planning Agent:", error);
+                return null;
             }
         }
 
+        // --- AI Module: ContentGenerationModule ---
         /**
-         * Generates the final HTML code for the website using the Gemini-2.0-Flash model.
-         * The code generation is based on the initial query, selected mockup, and the generated plan.
-         * The generated code is then displayed in an iframe in the preview tab.
-         * @param {string} userQuery - The initial query from the user.
-         * @param {string} imageBase64 - The base64 encoded string of the selected image mockup.
-         * @param {string} plan - The detailed website plan generated by the Planning Agent.
+         * Generates textual content for the website based on user query and plan.
+         * Uses the gemini-2.0-flash model.
+         * @param {string} userQuery - The original user's request.
+         * @param {string} websitePlan - The detailed plan for the website.
+         * @returns {Promise<Object>} A promise that resolves with a structured JSON object of content.
          */
-        async function generateWebsiteCode(userQuery, imageBase64, plan) {
+        async function ContentGenerationModule(userQuery, websitePlan) {
+            addTypingIndicator();
+            disableInput("Generating website content...");
+            addMessage("M.A.I.A: Writing compelling copy for your website...", false, 'text-gray-600');
+
+            const contentPrompt = `Based on the following user request and website plan, generate all the necessary textual content for the website. This includes headings, subheadings, paragraphs, button labels, and any other relevant text. Provide the output as a JSON object where keys represent sections or elements (e.g., "heroHeading", "aboutText", "contactButtonText") and values are the corresponding text strings.
+
+User Request: "${userQuery}"
+Website Plan:
+${websitePlan}
+`;
+            const payload = { 
+                contents: [{ role: "user", parts: [{ text: contentPrompt }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            "heroHeading": { "type": "STRING" },
+                            "heroSubheading": { "type": "STRING" },
+                            "heroButtonText": { "type": "STRING" },
+                            "aboutSectionTitle": { "type": "STRING" },
+                            "aboutParagraph1": { "type": "STRING" },
+                            "aboutParagraph2": { "type": "STRING" },
+                            "servicesSectionTitle": { "type": "STRING" },
+                            "service1Title": { "type": "STRING" },
+                            "service1Description": { "type": "STRING" },
+                            "contactSectionTitle": { "type": "STRING" },
+                            "contactEmail": { "type": "STRING" },
+                            "footerText": { "type": "STRING" }
+                        },
+                        "propertyOrdering": [
+                            "heroHeading", "heroSubheading", "heroButtonText",
+                            "aboutSectionTitle", "aboutParagraph1", "aboutParagraph2",
+                            "servicesSectionTitle", "service1Title", "service1Description",
+                            "contactSectionTitle", "contactEmail", "footerText"
+                        ]
+                    }
+                }
+            };
+            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
+
+            try {
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    removeTypingIndicator();
+                    if (response.status === 401) {
+                        addMessage(`M.A.I.A: Authorization error (401) from Content Generation Module. Please check your API key or contact support if the issue persists.`, false, 'text-red-500');
+                    } else {
+                        addMessage(`M.A.I.A: API error ${response.status} from Content Generation Module: ${errorText.substring(0, 200)}...`, false, 'text-red-500');
+                    }
+                    console.error("API Error Response (Content Generation Module):", response.status, errorText);
+                    return {};
+                }
+
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0 && result.candidates[0].content.parts[0].text) {
+                    const contentJson = JSON.parse(result.candidates[0].content.parts[0].text);
+                    removeTypingIndicator();
+                    addMessage("M.A.I.A: Content generated successfully!", false, 'text-gray-600');
+                    return contentJson;
+                } else {
+                    removeTypingIndicator();
+                    addMessage("M.A.I.A: Failed to generate content. Unexpected AI response structure.", false, 'text-red-500');
+                    console.error("Error: Content Generation Module returned unexpected structure:", result);
+                    return {};
+                }
+            } catch (error) {
+                removeTypingIndicator();
+                addMessage("M.A.I.A: Network error or malformed response during content generation. Please try again.", false, 'text-red-500');
+                console.error("Error calling Content Generation Module:", error);
+                return {};
+            }
+        }
+
+        // --- AI Module: AssetPromptingAgent ---
+        /**
+         * Generates prompts for visual assets needed for the final website.
+         * Uses the gemini-2.0-flash model.
+         * @param {string} userQuery - The original user's request.
+         * @param {string} selectedMockupData - Base64 of the selected mockup (for visual context).
+         * @param {string} websitePlan - The detailed website plan.
+         * @param {Object} generatedContent - The structured textual content.
+         * @returns {Promise<Array<Object>>} A promise that resolves with an array of asset prompt objects ({name: string, prompt: string}).
+         */
+        async function AssetPromptingAgent(userQuery, selectedMockupData, websitePlan, generatedContent) {
+            addTypingIndicator();
+            disableInput("Identifying assets for your website...");
+            addMessage("M.A.I.A: Determining necessary visual assets...", false, 'text-gray-600');
+
+            const assetPromptInstruction = `You are an AI assistant specialized in identifying and generating prompts for visual assets (images) needed for a complete website. Based on the user's initial request, the detailed website plan, the generated textual content, and the selected visual mockup (for style inspiration), identify generic images that would enhance the website.
+
+For each needed asset, provide a concise, high-quality prompt suitable for an image generation AI (like Imagen 3.0). Focus on the *essence* of the image, not specific details like faces or text.
+
+Output a JSON array of objects, where each object has "name" (e.g., "hero_image", "about_section_illustration") and "prompt" (the image generation prompt).
+
+Example Output:
+[
+  {"name": "hero_image", "prompt": "A modern, abstract digital art background with soft gradients, suitable for a technology company's hero section. Clean and futuristic aesthetic."},
+  {"name": "about_section_illustration", "prompt": "A minimalist line art illustration representing collaboration and growth, suitable for an 'About Us' section. Professional, friendly style."}
+]
+
+User Request: "${userQuery}"
+Website Plan:
+${websitePlan}
+Generated Content (for context): ${JSON.stringify(generatedContent)}
+`;
+            const payload = { 
+                contents: [{ 
+                    parts: [
+                        { text: assetPromptInstruction },
+                        { inline_data: { mime_type: "image/png", data: selectedMockupData } }
+                    ]
+                }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "ARRAY",
+                        items: {
+                            type: "OBJECT",
+                            properties: {
+                                "name": { "type": "STRING" },
+                                "prompt": { "type": "STRING" }
+                            },
+                            "propertyOrdering": ["name", "prompt"]
+                        }
+                    }
+                }
+            };
+            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
+
+            try {
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    removeTypingIndicator();
+                    if (response.status === 401) {
+                        addMessage(`M.A.I.A: Authorization error (401) from Asset Prompting Agent. Please check your API key or contact support if the issue persists.`, false, 'text-red-500');
+                    } else {
+                        addMessage(`M.A.I.A: API error ${response.status} from Asset Prompting Agent: ${errorText.substring(0, 200)}...`, false, 'text-red-500');
+                    }
+                    console.error("API Error Response (Asset Prompting Agent):", response.status, errorText);
+                    return [];
+                }
+
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0 && result.candidates[0].content.parts[0].text) {
+                    const assetPrompts = JSON.parse(result.candidates[0].content.parts[0].text);
+                    removeTypingIndicator();
+                    addMessage("M.A.I.A: Asset prompts generated!", false, 'text-gray-600');
+                    return assetPrompts;
+                } else {
+                    removeTypingIndicator();
+                    addMessage("M.A.I.A: Failed to generate asset prompts. Proceeding without specific assets. Unexpected AI response structure.", false, 'text-orange-500');
+                    console.error("Error: Asset Prompting Agent returned unexpected structure:", result);
+                    return [];
+                }
+            } catch (error) {
+                removeTypingIndicator();
+                addMessage("M.A.I.A: Network error or malformed response during asset prompt generation. Proceeding without specific assets.", false, 'text-orange-500');
+                console.error("Error calling Asset Prompting Agent:", error);
+                return [];
+            }
+        }
+
+        // --- AI Module: AssetGenerationModule ---
+        /**
+         * Generates visual assets (images) based on a list of prompts.
+         * Uses the imagen-3.0-generate-002 model.
+         * @param {Array<Object>} assetPrompts - Array of asset prompt objects ({name: string, prompt: string}).
+         * @returns {Promise<Object>} A promise that resolves with a map of asset names to base64 image URLs.
+         */
+        async function AssetGenerationModule(assetPrompts) {
+            addTypingIndicator();
+            disableInput("Generating visual assets...");
+            addMessage("M.A.I.A: Creating images for your website...", false, 'text-gray-600');
+
+            const assets = {};
+            if (assetPrompts.length === 0) {
+                removeTypingIndicator();
+                addMessage("M.A.I.A: No specific assets requested.", false, 'text-gray-600');
+                return assets;
+            }
+
+            for (const asset of assetPrompts) {
+                try {
+                    const payload = { instances: { prompt: asset.prompt }, parameters: { "sampleCount": 1 } };
+                    const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`; // Using imagen-3.0-generate-002
+
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        if (response.status === 401) {
+                            addMessage(`M.A.I.A: Authorization error (401) generating asset for "${asset.name}". Please check your API key or contact support.`, false, 'text-red-500');
+                        } else {
+                            addMessage(`M.A.I.A: API error ${response.status} generating asset for "${asset.name}": ${errorText.substring(0, 200)}... Skipping this asset.`, false, 'text-red-500');
+                        }
+                        console.warn(`Warning: API error ${response.status} generating asset for "${asset.name}": ${errorText.substring(0, 200)}... Skipping this asset.`);
+                        continue; // Skip to next asset
+                    }
+
+                    const result = await response.json();
+
+                    if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
+                        assets[asset.name] = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+                    } else {
+                        console.warn(`Warning: Could not generate asset for "${asset.name}". No prediction or empty data. Skipping.`);
+                    }
+                } catch (error) {
+                    console.error(`Error generating asset "${asset.name}":`, error);
+                }
+            }
+            removeTypingIndicator();
+            addMessage("M.A.I.A: All assets generated!", false, 'text-gray-600');
+            return assets;
+        }
+
+        // --- AI Module: CodeGenerationModule ---
+        /**
+         * Generates the final HTML code for the website.
+         * Uses the gemini-2.0-flash model.
+         * @param {string} userQuery - The initial query.
+         * @param {string} websitePlan - The detailed plan.
+         * @param {Object} generatedContent - Structured textual content.
+         * @param {Object} generatedAssets - Map of asset names to base64 URLs.
+         * @returns {Promise<string>} A promise that resolves with the generated HTML string.
+         */
+        async function CodeGenerationModule(userQuery, websitePlan, generatedContent, generatedAssets) {
             addTypingIndicator();
             disableInput("Code Agent is building...");
-            addMessage("M.A.I.A: Plan approved! The Code Generation Agent is now writing the final HTML based on all the information. This may take a moment...", false, 'text-gray-600');
+            addMessage("M.A.I.A: Writing the final HTML for your website...", false, 'text-gray-600');
             
+            // Generate a list of asset placeholders and their actual URLs
+            const assetPlaceholders = {};
+            const assetNamesList = Object.keys(generatedAssets).map(name => {
+                const placeholder = `[[ASSET_${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}]]`; // Create a unique, recognizable placeholder
+                assetPlaceholders[placeholder] = generatedAssets[name]; // Map placeholder to actual URL
+                return `- **${name}**: Use the placeholder '${placeholder}' for its image source.`;
+            }).join('\n');
+
             const codeGenPrompt = `You are an expert frontend developer. Your task is to generate a single, self-contained HTML file based on the comprehensive inputs provided.
-            
+
 Inputs:
 1.  **Original User Request**: "${userQuery}"
 2.  **The Approved Structural Plan**: 
     ---
-    ${plan}
+    ${websitePlan}
     ---
-3.  **The Visual Style Reference**: An image of the desired website is also provided. Use this image as inspiration for the overall layout, color scheme, and aesthetic "vibe" of the generated HTML. Do not attempt to recreate the image pixel-for-pixel, but capture its essence and general look.
+3.  **Generated Textual Content**: (Use this for all text elements like headings, paragraphs, buttons)
+    \`\`\`json
+    ${JSON.stringify(generatedContent, null, 2)}
+    \`\`\`
+4.  **Required Visual Assets & Placeholders**: (For each asset, use the provided placeholder in your HTML's 'src' attribute. The placeholders will be replaced by actual image URLs later.)
+    ${assetNamesList || "No specific assets provided. Use placeholder images with generic 'src' like 'https://placehold.co/600x400' if necessary or default design."}
 
 Requirements:
 -   The output must be ONLY the raw HTML code, starting with \`<!DOCTYPE html>\`.
 -   Use Tailwind CSS for ALL styling. Include the necessary Tailwind CDN script tag in the \`<head>\`.
--   Do NOT use inline \`style\` attributes or external CSS files.
--   Make the content relevant to the user's request (e.g., use placeholder text suitable for a chef's blog if that was the request).`;
+-   Do NOT use inline \`style\` attributes or external CSS files (except for the Tailwind CDN).
+-   Dynamically insert the provided textual content into the appropriate HTML elements.
+-   Integrate the generated asset image URLs using the specified placeholders (e.g., \`<img src="${assetPlaceholders['[[ASSET_HERO_IMAGE]]']}">\`) in your HTML.
+-   Ensure the website is fully responsive.
+-   Provide mock content if any specific content or assets are missing.
+-   Make it aesthetically pleasing based on the plan's vibe.`;
 
             const payload = {
-                contents: [{
-                    parts: [
-                        { text: codeGenPrompt },
-                        { inline_data: { mime_type: "image/png", data: imageBase64 } }
-                    ]
-                }]
+                contents: [{ role: "user", parts: [{ text: codeGenPrompt }] }],
             };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // Canvas environment will inject API key
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
             
             try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-                let generatedCode = "";
-
-                if (result.candidates && result.candidates.length > 0 && 
-                    result.candidates[0].content && result.candidates[0].content.parts &&
-                    result.candidates[0].content.parts.length > 0 && result.candidates[0].content.parts[0].text) {
-                    
-                    generatedCode = result.candidates[0].content.parts[0].text;
-                    // Extract only the HTML code if it's wrapped in markdown code block
-                    if (generatedCode.includes('```html')) {
-                        generatedCode = generatedCode.split('```html')[1].split('```')[0].trim();
-                    }
-
-                    previewInterface.innerHTML = ''; // Clear previous content
-                    const iframe = document.createElement('iframe');
-                    iframe.style.cssText = 'width: 100%; height: 100%; flex-grow: 1; border: 1px solid #e2e8f0; border-radius: 0.375rem;';
-                    iframe.srcdoc = generatedCode; // Load the generated HTML into the iframe
-                    previewInterface.appendChild(iframe);
-                    
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                
+                if (!response.ok) { // Check if HTTP response was successful
+                    const errorText = await response.text(); // Get raw error text
                     removeTypingIndicator();
-                    addMessage("M.A.I.A: Success! Your website has been generated. View it now in the preview.", false);
-                    aiWorkflowPhase = 'codeGenerated';
-                    disableInput("Website generated. Refresh to start a new one."); // User cannot input further
-                    
-                    previewAvailable = true;
-                    if (currentView === 'chat') {
-                        toggleViewButton.classList.remove('hidden');
-                        toggleViewButton.textContent = 'Show Preview';
+                    if (response.status === 401) {
+                        addMessage(`M.A.I.A: Authorization error (401) from Code Generation Module. Please check your API key or contact support if the issue persists.`, false, 'text-red-500');
                     } else {
-                        toggleViewButton.textContent = 'Show Chat';
+                        addMessage(`M.A.I.A: API error ${response.status} from Code Generation Module: ${errorText.substring(0, 200)}...`, false, 'text-red-500');
                     }
-                    switchView(); // Automatically switch to preview to show final website
+                    console.error("API Error Response (Code Generation Module):", response.status, errorText);
+                    return null;
+                }
 
+                const result = await response.json(); // Attempt to parse JSON
+
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0 && result.candidates[0].content.parts[0].text) {
+                    let generatedHtml = result.candidates[0].content.parts[0].text;
+                    if (generatedHtml.includes('```html')) {
+                        generatedHtml = generatedHtml.split('```html')[1].split('```')[0].trim();
+                    }
+
+                    // --- Client-side placeholder replacement ---
+                    // Replace the generated placeholders with actual base64 image URLs
+                    for (const placeholder in assetPlaceholders) {
+                        const actualUrl = assetPlaceholders[placeholder];
+                        // Use a regular expression with the 'g' flag to replace all occurrences
+                        // Ensure to escape special characters in the placeholder if necessary (though [[...]] is usually safe)
+                        generatedHtml = generatedHtml.split(placeholder).join(actualUrl);
+                    }
+                    // --- End client-side replacement ---
+
+                    removeTypingIndicator();
+                    addMessage("M.A.I.A: Website code generated!", false, 'text-gray-600');
+                    return generatedHtml; // Return HTML with actual image URLs
                 } else {
-                     removeTypingIndicator();
-                    addMessage("M.A.I.A: The Code Agent failed to generate valid code. The response was unexpected. Please try again.", false, 'text-red-500');
-                    console.error("Error: Code Agent returned unexpected structure:", result);
-                    aiWorkflowPhase = 'awaitingPlanApproval'; 
-                    enableInput();
+                    removeTypingIndicator();
+                    addMessage("M.A.I.A: Failed to generate website code. Unexpected AI response structure.", false, 'text-red-500');
+                    console.error("Error: Code Generation Module returned unexpected structure:", result);
+                    return null;
                 }
             } catch (error) {
                 removeTypingIndicator();
-                addMessage("M.A.I.A: The Code Agent failed. Please try again.", false, 'text-red-500');
-                console.error("Error calling Code Generation Agent:", error);
-                aiWorkflowPhase = 'awaitingPlanApproval'; // Allow user to try generating code again
-                enableInput();
+                addMessage("M.A.I.A: Network error or malformed response during code generation. Please try again.", false, 'text-red-500');
+                console.error("Error calling Code Generation Module:", error);
+                return null;
             }
         }
 
-        // --- Main event listener is now a more complex state machine
+        // --- UI Module: UI_DisplayFinalWebsiteModule ---
         /**
-         * Main event listener for the submit button.
-         * Controls the workflow based on the current `aiWorkflowPhase`.
+         * Displays the final generated HTML website in the preview area.
+         * @param {string} htmlCode - The complete HTML string to display.
          */
+        function UI_DisplayFinalWebsiteModule(htmlCode) {
+            if (!htmlCode) {
+                previewInterface.innerHTML = '<p>No website code to display.</p>';
+                previewAvailable = false;
+                toggleViewButton.classList.add('hidden');
+                return;
+            }
+
+            previewInterface.innerHTML = ''; // Clear previous content
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = 'width: 100%; height: 100%; flex-grow: 1; border: 1px solid #e2e8f0; border-radius: 0.75rem; box-shadow: 0 4px 10px rgba(0,0,0,0.1);';
+            iframe.srcdoc = htmlCode; // Load the generated HTML into the iframe
+            previewInterface.appendChild(iframe);
+            
+            previewAvailable = true;
+            toggleViewButton.classList.remove('hidden');
+            if (currentView === 'chat') {
+                toggleViewButton.textContent = 'Show Preview';
+            } else {
+                toggleViewButton.textContent = 'Show Chat';
+            }
+            switchView(); // Show preview after website is loaded
+        }
+
+
+        // --- Workflow Orchestration (Main Event Listener) ---
         submitButton.addEventListener('click', async function() { 
             const enteredText = userInput.value.trim();
-            if (!enteredText) return;
+            if (!enteredText && aiWorkflowPhase !== 'awaitingMockupSelection') return; // Allow empty input for mockup selection (taps)
 
-            // Only add user message to chat if currently in chat view
-            if (currentView === 'chat') {
+            // Only add user message to chat if currently in chat view or it's the initial query
+            if (currentView === 'chat' || aiWorkflowPhase === 'initialQuery') {
                 addMessage(enteredText, true);
             }
             userInput.value = '';
@@ -726,36 +992,53 @@ Requirements:
             switch(aiWorkflowPhase) {
                 case 'initialQuery':
                     initialUserQuery = enteredText;
-                    // No more fancy UI animation on first chat; it's always there
-                    // Call the new prompt generation step first
-                    const imagePrompt = await generateImageGenPrompt(initialUserQuery);
-                    if (imagePrompt) {
-                        generateImageMockups(imagePrompt);
+                    const imageGenPrompt = await ImagePromptingAgent(initialUserQuery);
+                    if (imageGenPrompt) {
+                        generatedMockupsData = await ImageGenerationModule(imageGenPrompt);
+                        UI_DisplayMockupsModule(generatedMockupsData);
+                        aiWorkflowPhase = 'awaitingMockupSelection';
+                        enableInput(); // Re-enable input for selection
+                        userInput.placeholder = "Tap a mockup or type 'new ones'";
+                        submitButton.textContent = "Select";
                     } else {
-                        // If prompt generation fails, fallback to original query for mockups
-                        generateImageMockups(initialUserQuery);
+                        // Fallback if prompt generation fails
+                        addMessage("M.A.I.A: Unable to generate mockups at this time. Please try rephrasing your request or refresh to start over.", false, 'text-red-500');
+                        enableInput();
                     }
                     break;
 
                 case 'awaitingMockupSelection':
                     if (enteredText.toLowerCase().includes('new')) {
-                        // If user wants new mockups, generate new prompt and then new mockups
-                        const imagePromptForNew = await generateImageGenPrompt(initialUserQuery);
-                        if (imagePromptForNew) {
-                            generateImageMockups(imagePromptForNew);
+                        const newImageGenPrompt = await ImagePromptingAgent(initialUserQuery);
+                        if (newImageGenPrompt) {
+                            generatedMockupsData = await ImageGenerationModule(newImageGenPrompt);
+                            UI_DisplayMockupsModule(generatedMockupsData);
+                            enableInput();
+                            userInput.placeholder = "Tap a mockup or type 'new ones'";
+                            submitButton.textContent = "Select";
                         } else {
-                            generateImageMockups(initialUserQuery); // Fallback
+                            addMessage("M.A.I.A: Failed to generate new mockups. Please try again later.", false, 'text-red-500');
+                            enableInput();
                         }
                     } else {
                         const selection = parseInt(enteredText);
-                        if (!isNaN(selection) && selection >= 1 && selection <= 4) {
+                        if (!isNaN(selection) && selection >= 1 && selection <= generatedMockupsData.length) {
                             selectedMockupData = generatedMockupsData[selection - 1];
-                            generateWebsitePlan(initialUserQuery, selectedMockupData);
+                            websitePlan = await WebsitePlanningAgent(initialUserQuery, selectedMockupData);
+                            if (websitePlan) {
+                                aiWorkflowPhase = 'awaitingPlanApproval';
+                                enableInput();
+                                userInput.placeholder = "Type 'Proceed' to approve the plan";
+                                submitButton.textContent = "Proceed";
+                            } else {
+                                addMessage("M.A.I.A: Failed to generate a website plan. Please try selecting a different mockup or 'new ones'.", false, 'text-red-500');
+                                aiWorkflowPhase = 'awaitingMockupSelection';
+                                enableInput();
+                            }
                         } else {
-                            addMessage("M.A.I.A: Please enter a valid number between 1 and 4 or 'new ones'.", false, 'text-red-500');
-                            // Ensure we're in chat view to show this message
+                            addMessage("M.A.I.A: Please enter a valid number between 1 and " + generatedMockupsData.length + " or 'new ones'.", false, 'text-red-500');
                             if (currentView !== 'chat') {
-                                switchView(); 
+                                switchView();
                             }
                         }
                     }
@@ -763,19 +1046,39 @@ Requirements:
 
                 case 'awaitingPlanApproval':
                     if (enteredText.toLowerCase().includes('proceed')) {
-                        generateWebsiteCode(initialUserQuery, selectedMockupData, websitePlan);
+                        generatedContent = await ContentGenerationModule(initialUserQuery, websitePlan);
+                        // Check if content generation failed before proceeding
+                        if (Object.keys(generatedContent).length === 0) {
+                            addMessage("M.A.I.A: Content generation failed. Cannot proceed with code generation.", false, 'text-red-500');
+                            aiWorkflowPhase = 'awaitingPlanApproval';
+                            enableInput();
+                            break;
+                        }
+
+                        const assetPrompts = await AssetPromptingAgent(initialUserQuery, selectedMockupData, websitePlan, generatedContent);
+                        generatedAssets = await AssetGenerationModule(assetPrompts);
+                        const finalHtml = await CodeGenerationModule(initialUserQuery, websitePlan, generatedContent, generatedAssets);
+                        
+                        if (finalHtml) {
+                            UI_DisplayFinalWebsiteModule(finalHtml);
+                            aiWorkflowPhase = 'codeGenerated';
+                            disableInput("Website generated. Refresh to start a new one.");
+                            addMessage("M.A.I.A: Your website is complete! Explore it in the preview.", false);
+                        } else {
+                            addMessage("M.A.I.A: Failed to build the final website. Please try approving the plan again.", false, 'text-red-500');
+                            aiWorkflowPhase = 'awaitingPlanApproval';
+                            enableInput();
+                        }
                     } else {
-                        addMessage("M.A.I.A: Understood as feedback. In a future version, I'll use this to refine the plan. For now, please type 'Proceed' to continue or refresh to start over.", false);
-                        // Ensure we're in chat view to show this message
+                        addMessage("M.A.I.A: Understood as feedback. For now, please type 'Proceed' to continue or refresh to start over.", false);
                         if (currentView !== 'chat') {
                             switchView();
                         }
                     }
                     break;
+
                 case 'codeGenerated':
-                    // If code is already generated, user can't input further for this session
                     addMessage("M.A.I.A: The website has already been generated. Refresh the page if you'd like to build a new one.", false, 'text-gray-500');
-                    // Ensure we're in chat view to show this message
                     if (currentView !== 'chat') {
                         switchView();
                     }
@@ -783,23 +1086,19 @@ Requirements:
             }
         });
 
-        /**
-         * Allows submitting the message by pressing Enter key.
-         */
         userInput.addEventListener('keypress', function(event) {
             if (event.key === 'Enter') {
                 submitButton.click();
             }
         });
 
-        // Toggle view button event listener
         toggleViewButton.addEventListener('click', switchView);
 
-        // Initial setup: ensure only chat is visible and preview button is hidden
+        // Initial setup on load
         chatInterface.classList.remove('hidden');
         previewInterface.classList.add('hidden');
-        toggleViewButton.classList.add('hidden');
+        toggleViewButton.classList.add('hidden'); // Initially hide until preview is available
+        enableInput(); // Ensure input is enabled at start
     </script>
 </body>
 </html>
-
