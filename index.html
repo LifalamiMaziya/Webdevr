@@ -410,7 +410,7 @@ Example Output: "A clean screenshot of a minimalist and contemporary website int
 Now, generate a prompt based on the following user query: "${userQuery}"`;
 
             const payload = { contents: [{ role: "user", parts: [{ text: promptRefinementInstruction }] }] };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiKey = "_API_KEY_"; // API Key Placeholder
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
 
             try {
@@ -461,7 +461,7 @@ Now, generate a prompt based on the following user query: "${userQuery}"`;
             addMessage("M.A.I.A: Generating initial design concepts...", false, 'text-gray-600');
             
             const payload = { instances: { prompt: prompt }, parameters: { "sampleCount": 4 } };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiKey = "_API_KEY_"; // API Key Placeholder
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`; // Using imagen-3.0-generate-002
 
             try {
@@ -570,7 +570,7 @@ Now, generate a prompt based on the following user query: "${userQuery}"`;
 User's initial request: "${userQuery}"`;
             
             const payload = { contents: [{ parts: [{ text: planningPrompt }, { inline_data: { mime_type: "image/png", data: imageBase64 } }] }] };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiKey = "_API_KEY_"; // API Key Placeholder
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
 
             try {
@@ -658,7 +658,7 @@ ${websitePlan}
                     }
                 }
             };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiKey = "_API_KEY_"; // API Key Placeholder
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
 
             try {
@@ -751,7 +751,7 @@ Generated Content (for context): ${JSON.stringify(generatedContent)}
                     }
                 }
             };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiKey = "_API_KEY_"; // API Key Placeholder
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
 
             try {
@@ -812,7 +812,7 @@ Generated Content (for context): ${JSON.stringify(generatedContent)}
             for (const asset of assetPrompts) {
                 try {
                     const payload = { instances: { prompt: asset.prompt }, parameters: { "sampleCount": 1 } };
-                    const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+                    const apiKey = "_API_KEY_"; // API Key Placeholder
                     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`; // Using imagen-3.0-generate-002
 
                     const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -895,7 +895,7 @@ Requirements:
             const payload = {
                 contents: [{ role: "user", parts: [{ text: codeGenPrompt }] }],
             };
-            const apiKey = "AIzaSyCYc0DkE70DDJllm0XYQ2wpKuhl_kwjAHA"; // User provided API key
+            const apiKey = "_API_KEY_"; // API Key Placeholder
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; // Using gemini-2.0-flash
             
             try {
